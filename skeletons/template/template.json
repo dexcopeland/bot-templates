@@ -1,0 +1,9 @@
+{
+  "id": "{{template-id}}",
+  "name": "{{Template Name}}",
+  "description": "{{One-line description.}}",
+  "domain": "{{domain}}",
+  "domains": ["{{domain}}"],
+  "skills": ["{{skill-id}}"],
+  "example": false
+}

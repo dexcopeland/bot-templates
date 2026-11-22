@@ -1,0 +1,22 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate catalog, templates, and skill copies
+        run: python3 scripts/validate.py
+
+      - name: Confirm skill copies are in sync
+        run: python3 scripts/sync_skills.py --check

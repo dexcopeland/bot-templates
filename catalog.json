@@ -1,0 +1,26 @@
+{
+  "$schema": "./catalog.schema.json",
+  "version": 1,
+  "skills": [
+    {
+      "id": "example-checklist",
+      "name": "Example Checklist",
+      "description": "Sample skill that turns one short request into a three-item checklist.",
+      "domains": ["example"],
+      "path": "skills/example-checklist",
+      "example": true
+    }
+  ],
+  "templates": [
+    {
+      "id": "example-assistant",
+      "name": "Example Assistant",
+      "description": "Sample bot that answers with a three-item checklist.",
+      "domain": "example",
+      "domains": ["example"],
+      "path": "templates/example/example-assistant",
+      "skills": ["example-checklist"],
+      "example": true
+    }
+  ]
+}
