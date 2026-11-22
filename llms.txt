@@ -1,0 +1,21 @@
+# Bot templates
+
+> Domain-specific bot templates and skills from Dex Copeland. Each template folder is a complete package for Grok Bot and for other agent hosts.
+
+Agents install a template from this repository by reading AGENTS.md, then catalog.json, then the template folder. Sample entries are marked EXAMPLE.
+
+## Start here
+
+- [AGENTS.md](AGENTS.md): How to find and install a template
+- [README.md](README.md): Human overview and layout
+- [catalog.json](catalog.json): Index of templates and skills
+- [catalog.schema.json](catalog.schema.json): Catalog shape
+- [CONTRIBUTING.md](CONTRIBUTING.md): Authoring rules, sync rule, and skeletons
+
+## Templates
+
+- [Example Assistant](templates/example/example-assistant/README.md): EXAMPLE. Sample bot that returns a three-item checklist.
+
+## Skills
+
+- [Example Checklist](skills/example-checklist/SKILL.md): EXAMPLE. Canonical sample skill. The installable copy lives inside the template that uses it.

@@ -1,0 +1,9 @@
+{
+  "id": "example-assistant",
+  "name": "Example Assistant",
+  "description": "Sample bot that answers with a three-item checklist.",
+  "domain": "example",
+  "domains": ["example"],
+  "skills": ["example-checklist"],
+  "example": true
+}
