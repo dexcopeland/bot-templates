@@ -84,11 +84,30 @@ def display_path(root: Path, path: Path) -> str:
 
 
 def safe_join(root: Path, relative: Path | str) -> Path:
-    root_resolved = root.resolve()
-    candidate = (root_resolved / relative).resolve()
-    if candidate == root_resolved or root_resolved not in candidate.parents:
+    """Join a repo-relative path without following symlinks.
+
+    The returned path stays inside ``root``. A symlink is left unresolved so
+    callers can refuse to delete through it.
+    """
+    root_real = root.resolve()
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or any(part == ".." for part in relative_path.parts):
+        raise RuntimeError(f"refusing to touch path outside the repository: {relative}")
+    candidate = root_real.joinpath(*relative_path.parts)
+    if candidate != root_real and root_real not in candidate.parents:
         raise RuntimeError(f"refusing to touch path outside the repository: {relative}")
     return candidate
+
+
+def symlink_blocking(root: Path, path: Path) -> Path | None:
+    """Return ``path`` or an ancestor inside ``root`` that is a symlink."""
+    root_real = root.resolve()
+    current = path
+    while current != root_real and current != current.parent:
+        if current.is_symlink():
+            return current
+        current = current.parent
+    return None
 
 
 def read_text(path: Path) -> str | None:
@@ -424,6 +443,8 @@ def check_skill_package(root: Path, skill_dir: Path) -> list[str]:
             problems.append(f"{display_path(root, path)} is a symlink")
     text = read_text(skill_md) if skill_md.is_file() else None
     referenced = extract_refs(text) if text is not None else set()
+    if text is not None:
+        problems.extend(check_skill_links(root, skill_dir, skill_md, referenced))
     for path in files:
         if path.is_symlink():
             continue
@@ -444,6 +465,33 @@ def check_skill_package(root: Path, skill_dir: Path) -> list[str]:
                 f"{display_path(root, path)} is not linked from SKILL.md. "
                 "Add a relative link so an agent can find the file."
             )
+    return problems
+
+
+def check_skill_links(root: Path, skill_dir: Path, skill_md: Path, referenced: set[str]) -> list[str]:
+    problems: list[str] = []
+    label = display_path(root, skill_md)
+    for ref in sorted(referenced):
+        if not ref or ref.startswith(("#", "http://", "https://", "mailto:")):
+            continue
+        relative = Path(ref)
+        outside = (
+            ref.startswith(("/", "\\"))
+            or "\\" in ref
+            or relative.is_absolute()
+            or ".." in relative.parts
+        )
+        if outside:
+            problems.append(f"{label} links outside the skill folder: {ref}")
+            continue
+        target = skill_dir.joinpath(*relative.parts)
+        try:
+            target.relative_to(skill_dir)
+        except ValueError:
+            problems.append(f"{label} links outside the skill folder: {ref}")
+            continue
+        if not target.is_file():
+            problems.append(f"{label} links to {ref}, and that file is missing")
     return problems
 
 
@@ -607,6 +655,13 @@ def sync_copies(root: Path, catalog: dict, *, write: bool) -> tuple[list[str], l
         except RuntimeError as exc:
             problems.append(str(exc))
             continue
+        blocked = symlink_blocking(root, skills_root)
+        if blocked is not None:
+            problems.append(
+                f"{rel_template}/skills is a symlink or sits under one ({blocked.name}). "
+                "Refusing to follow it."
+            )
+            continue
         expected = list(template["skills"])
         if skills_root.exists() and not skills_root.is_dir():
             problems.append(f"{rel_template}/skills is not a directory")
@@ -617,13 +672,24 @@ def sync_copies(root: Path, catalog: dict, *, write: bool) -> tuple[list[str], l
         for name in actual:
             if name in expected:
                 continue
+            try:
+                destination = safe_join(root, Path(rel_template) / "skills" / name)
+            except RuntimeError as exc:
+                problems.append(str(exc))
+                continue
+            blocked = symlink_blocking(root, destination)
+            if blocked is not None:
+                problems.append(
+                    f"{rel_template}/skills/{name} is a symlink or sits under one ({blocked.name}). "
+                    "Refusing to delete it."
+                )
+                continue
             message = (
                 f"{rel_template}/skills/{name} is not listed on the template. "
                 "Run python3 scripts/sync_skills.py."
             )
             if write:
                 try:
-                    destination = safe_join(root, Path(rel_template) / "skills" / name)
                     remove_tree(destination)
                 except RuntimeError as exc:
                     problems.append(str(exc))
@@ -638,11 +704,17 @@ def sync_copies(root: Path, catalog: dict, *, write: bool) -> tuple[list[str], l
             except RuntimeError as exc:
                 problems.append(str(exc))
                 continue
+            source_link = symlink_blocking(root, source)
+            dest_link = symlink_blocking(root, destination)
+            if source_link is not None or dest_link is not None:
+                blocked_name = (source_link or dest_link).name
+                problems.append(
+                    f"{rel_template}/skills/{skill_id} is a symlink or sits under one ({blocked_name}). "
+                    "Refusing to replace it."
+                )
+                continue
             if not source.is_dir():
                 problems.append(f"{rel_template} lists {skill_id}, and skills/{skill_id} is missing")
-                continue
-            if destination.is_symlink():
-                problems.append(f"{rel_template}/skills/{skill_id} is a symlink")
                 continue
             diff = describe_tree_diff(source, destination)
             if diff is None:
@@ -688,6 +760,5 @@ def sync_repository(root: Path, *, write: bool) -> tuple[list[str], list[str]]:
     if shape:
         return problems, []
     drift, actions = sync_copies(root, catalog, write=write)
-    if write:
-        return problems, actions
-    return drift, actions
+    problems.extend(drift)
+    return problems, actions

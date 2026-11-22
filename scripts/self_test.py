@@ -148,6 +148,50 @@ def run_self_test() -> list[str]:
         found = validate_repository(root)
         if not any("extra.md" in item and "SKILL.md" in item for item in found):
             problems.append("an unlinked helper was not reported")
+
+    problems.extend(check_symlink_delete_is_refused())
+    problems.extend(check_missing_helper_link_fails())
+    return problems
+
+
+def check_symlink_delete_is_refused() -> list[str]:
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write_fixture(root)
+        canonical = root / "skills" / "demo"
+        marker = canonical / "SKILL.md"
+        before = marker.read_text(encoding="utf-8")
+        link = root / "templates" / "example" / "demo-bot" / "skills" / "removed-skill"
+        link.symlink_to(canonical, target_is_directory=True)
+        sync_problems, actions = sync_repository(root, write=True)
+        if not marker.is_file() or marker.read_text(encoding="utf-8") != before:
+            problems.append("canonical skill was deleted through a vendored symlink")
+        if not link.is_symlink():
+            problems.append("vendored symlink was removed; the sync should refuse it")
+        if not any("symlink" in item for item in sync_problems):
+            problems.append("symlink deletion was not reported: " + " | ".join(sync_problems))
+        if any(item.startswith("removed ") for item in actions):
+            problems.append("sync removed a path while a symlink was present")
+    return problems
+
+
+def check_missing_helper_link_fails() -> list[str]:
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write_fixture(root)
+        skill_md = root / "skills" / "demo" / "SKILL.md"
+        skill_md.write_text(
+            skill_md.read_text(encoding="utf-8") + "\nSee [missing helper](references/missing.md).\n",
+            encoding="utf-8",
+        )
+        sync_problems, _actions = sync_repository(root, write=True)
+        if sync_problems:
+            problems.append("sync failed while copying a missing-link skill: " + " | ".join(sync_problems))
+        found = validate_repository(root)
+        if not any("references/missing.md" in item and "missing" in item for item in found):
+            problems.append("missing helper link was not reported: " + " | ".join(found))
     return problems
 
 
